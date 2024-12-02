@@ -5,92 +5,77 @@ import mediapipe as mp
 import numpy as np
 
 # Charger le modèle YOLOv8 pour la détection des personnes
-model = YOLO('yolov8n.pt')  # Charger le modèle YOLOv8n pré-entrainé
+model = YOLO('yolov8n.pt')
 
 # Initialisation de MediaPipe pour la détection des poses
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-POSITIONS = ["priere", "mains_a_droite", "mains_fesses", "mains_fesses", "main_en_air"]
+POSITIONS = ["priere", "mains_a_droite","mains_a_gauche","mains_ecartees", "mains_fesses", "main_en_air"]
+POSE_TIME_LIMIT = 4  # Temps maximum pour effectuer une pose (en secondes)
 
-# Fonction pour vérifier si la pose correspond à une pose cible (Dab)
+# Fonction pour vérifier si la pose correspond à une pose cible
 def is_good_position(landmarks, position):
     correct = True
     if position == "priere":
-        # Mains jointes: vérifier si la distance entre les poignets est inférieure à un seuil
         left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
         right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
         distance = np.sqrt((left_wrist.x - right_wrist.x) ** 2 + (left_wrist.y - right_wrist.y) ** 2)
         if distance > 0.3:  # Seuil à ajuster selon les besoins
             correct = False
-
-    if position == "mains_a_droite":
+    elif position == "mains_a_gauche":
         nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
         left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
         right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
         if left_wrist_x > nose_x or right_wrist_x > nose_x:
             correct = False
-
-    if position == "mains_tete":
-        nose_y = landmarks[mp_pose.PoseLandmark.NOSE.value].y
-        left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
-        right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
-        if left_wrist_y > nose_y or right_wrist_y > nose_y:
+    elif position == "mains_a_droite":
+        nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
+        left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
+        right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
+        if left_wrist_x < nose_x or right_wrist_x < nose_x:
             correct = False
-
-    if position == "mains_fesses":
+    elif position == "mains_fesses":
         left_hip_y = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y
         right_hip_y = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y
         left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
         right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
-        if left_wrist_y == left_hip_y or right_wrist_y == right_hip_y:
+        if left_wrist_y != left_hip_y or right_wrist_y != right_hip_y:
             correct = False
-
-    if position == "main_en_air":
+    elif position == "main_en_air":
         left_shoulder_y = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y
         right_shoulder_y = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y
         left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
         right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
         if left_wrist_y > left_shoulder_y or right_wrist_y > right_shoulder_y:
             correct = False
+    elif position == "mains_ecartees":
+        # Vérifier si les bras sont écartés
+        left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+        right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+        left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+        shoulder_width = np.abs(left_shoulder.x - right_shoulder.x)
+        wrist_distance = np.abs(left_wrist.x - right_wrist.x)
+
+        if wrist_distance < 1.5 * shoulder_width:
+            correct = False
+        left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value]
+        right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value]
+        left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value]
+        right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value]
+        # Vérifier la hauteur des genoux par rapport aux hanches
+        if left_knee.y < left_hip.y - 0.1 or right_knee.y < right_hip.y - 0.1:  # Ajustez le seuil (0.1) si nécessaire
+            correct = False
 
     return correct
-
-# Fonction pour superposer l'image de la pose avec transparence
-def overlay_pose_with_transparency(frame, pose_image):
-    # Assurez-vous que l'image de la pose a 4 canaux (R, G, B, A)
-    if pose_image.shape[2] == 4:
-        # Séparer les canaux : RGB et alpha
-        img_rgb = pose_image[:, :, :3]
-        img_alpha = pose_image[:, :, 3] / 255.0  # Normaliser l'alpha (0 à 1)
-
-        # Définir la position où l'image de la pose sera affichée (coin inférieur droit)
-        height, width, _ = frame.shape
-        pose_height, pose_width, _ = img_rgb.shape
-        x_offset = width - pose_width - 10
-        y_offset = height - pose_height - 10
-
-        # Superposer l'image de la pose avec transparence sur le frame
-        for c in range(0, 3):  # Pour chaque canal (R, G, B)
-            frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] = \
-                (1. - img_alpha) * frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] + \
-                img_alpha * img_rgb[:, :, c]
-    else:
-        # Si l'image de la pose n'a pas d'alpha (pas de transparence), on l'ajoute simplement au frame
-        height, width, _ = frame.shape
-        pose_height, pose_width, _ = pose_image.shape
-        x_offset = width - pose_width - 10
-        y_offset = height - pose_height - 10
-        frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width] = pose_image
-
-    return frame
 
 # Initialisation de la capture vidéo
 cap = cv2.VideoCapture(0)
 
 indice_pose = 0
-delay = 3
 last_change_time = time.time()
+pose_start_time = None  # Heure de début pour chronométrer chaque pose
 
 while cap.isOpened():
     if indice_pose > len(POSITIONS) - 1:
@@ -101,71 +86,64 @@ while cap.isOpened():
         break
 
     # Utilisation de YOLOv8 pour détecter les personnes
-    results = model(frame)  # Appliquer le modèle YOLOv8 sur l'image
-
-    # Résultats de détection YOLOv8 sous forme de liste d'objets Box
-    detections = results[0].boxes  # Récupérer les boîtes englobantes des objets détectés
+    results = model(frame)
+    detections = results[0].boxes
 
     # Filtrer les détections pour ne garder que les personnes
     for box in detections:
-        if box.cls == 0:  # Classe 0 correspond à "person" dans YOLOv8
-            xyxy = box.xyxy[0].cpu().numpy()  # Convertir en numpy array
-            x1, y1, x2, y2 = map(int, xyxy)  # Convertir en entiers
-
+        if box.cls == 0:  # Classe 0 correspond à "person"
+            xyxy = box.xyxy[0].cpu().numpy()
+            x1, y1, x2, y2 = map(int, xyxy)
             person_roi = frame[y1:y2, x1:x2]
-
-            # Conversion de l'image en RGB pour MediaPipe
             person_rgb = cv2.cvtColor(person_roi, cv2.COLOR_BGR2RGB)
 
             # Détection de pose avec MediaPipe
             results_pose = pose.process(person_rgb)
 
-            cv2.putText(frame, POSITIONS[indice_pose], (400, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
-                        cv2.LINE_AA)
-
-            # Si des points clés sont détectés
             if results_pose.pose_landmarks:
                 landmarks = results_pose.pose_landmarks.landmark
 
-                # Vérifier si la pose correspond
+                # Démarrer le chronomètre pour cette pose si ce n'est pas déjà fait
+                if pose_start_time is None:
+                    pose_start_time = time.time()
+
+                # Temps restant pour effectuer la pose
+                elapsed_time = time.time() - pose_start_time
+                time_remaining = max(0, POSE_TIME_LIMIT - elapsed_time)
+
                 if is_good_position(landmarks, POSITIONS[indice_pose]):
-                    current_time = time.time()
-                    cv2.putText(frame, "Pose correcte!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
-                                cv2.LINE_AA)
-                    if current_time - last_change_time >= delay:
-                        last_change_time = current_time  # Met à jour l'heure de changement
-                        indice_pose += 1  # Incrémente l'indice
-
+                    cv2.putText(frame, "Pose correcte!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    if elapsed_time >= POSE_TIME_LIMIT:
+                        indice_pose += 1
+                        pose_start_time = None  # Réinitialiser le chronomètre
                 else:
-                    cv2.putText(frame, "Essaye encore!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2,
-                                cv2.LINE_AA)
+                    cv2.putText(frame, "Essaye encore!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-                # Dessiner les points clés de la pose
-                mp.solutions.drawing_utils.draw_landmarks(person_roi, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+                # Afficher le compteur
+                cv2.putText(frame, f"Temps restant: {time_remaining:.1f}s", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                            (255, 255, 0), 2)
 
-                # Affichage des landmarks de la pose détectée (superposition)
-                for idx, landmark in enumerate(results_pose.pose_landmarks.landmark):
-                    x = int(landmark.x * person_roi.shape[1])
-                    y = int(landmark.y * person_roi.shape[0])
-                    cv2.circle(frame, (x + x1, y + y1), 5, (0, 255, 0), -1)  # Afficher les landmarks en vert
+                # Si le temps est écoulé et la pose est incorrecte, réinitialiser
+                if time_remaining == 0 and not is_good_position(landmarks, POSITIONS[indice_pose]):
+                    pose_start_time = None  # Réinitialiser le chronomètre
 
             # Encadrer la personne détectée
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3)
+            #cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3)
 
-    # Charger l'image de la pose cible (image PNG)
+    # Charger et afficher l'image de la pose cible
     pose_image = cv2.imread(f"poses/{POSITIONS[indice_pose]}.png", cv2.IMREAD_UNCHANGED)
-
-    # Afficher l'image de la pose à réaliser avec transparence
     if pose_image is not None:
-        frame = overlay_pose_with_transparency(frame, pose_image)
+        height, width, _ = frame.shape
+        pose_height, pose_width, _ = pose_image.shape
+        x_offset = width - pose_width - 10
+        y_offset = height - pose_height - 10
+        frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width] = pose_image[:, :, :3]
 
     # Afficher l'image avec les résultats
     cv2.imshow("Just Dance", frame)
 
-    # Sortir avec 'q'
     if cv2.waitKey(10) & 0xFF == ord('q'):
         break
 
-# Libérer les ressources
 cap.release()
 cv2.destroyAllWindows()
