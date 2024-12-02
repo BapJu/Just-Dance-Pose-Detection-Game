@@ -3,6 +3,7 @@ import cv2
 from ultralytics import YOLO
 import mediapipe as mp
 import numpy as np
+from random import randint
 
 # Charger le modèle YOLOv8 pour la détection des personnes
 model = YOLO('yolov8n.pt')
@@ -52,7 +53,7 @@ def is_good_position(landmarks, position):
         left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
         right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
         distance = np.sqrt((left_wrist.x - right_wrist.x) ** 2 + (left_wrist.y - right_wrist.y) ** 2)
-        if distance > 0.3:  # Seuil à ajuster selon les besoins
+        if distance > 0.3:
             correct = False
 
 
@@ -81,7 +82,7 @@ def is_good_position(landmarks, position):
             correct = False
 
 
-    elif position == "mains_a_droite":
+    elif position == "mains_a_gauche":
         nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
         left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
         right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
@@ -146,8 +147,7 @@ indice_pose = 0
 last_change_time = time.time()
 
 while cap.isOpened():
-    if indice_pose >= len(POSITIONS) - 1:
-        indice_pose = 0
+
 
     ret, frame = cap.read()
     if not ret:
@@ -202,7 +202,7 @@ while cap.isOpened():
                 # Mettre à jour le score
                 ok = score_tracker.update_score(POSITIONS[indice_pose], is_correct)
                 if ok :
-                    indice_pose += 1
+                    indice_pose = randint(0, len(POSITIONS) - 1)
                 if is_correct:
                     cv2.putText(frame, "Pose correcte!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
                                 cv2.LINE_AA)
