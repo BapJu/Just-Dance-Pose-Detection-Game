@@ -3,8 +3,6 @@ import cv2
 from ultralytics import YOLO
 import mediapipe as mp
 import numpy as np
-from pydub import AudioSegment
-from pydub.playback import play
 
 # Charger le modèle YOLOv8 pour la détection des personnes
 model = YOLO('yolov8n.pt')  # Charger le modèle YOLOv8n pré-entrainé
@@ -13,13 +11,11 @@ model = YOLO('yolov8n.pt')  # Charger le modèle YOLOv8n pré-entrainé
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-POSITIONS = ["priere", "mains_a_droite", "mains_fesses", "mains_fesses", "main_en_air"]
-TARGET_POSE_TIME = 1.5  # Temps cible pour maintenir une pose
+POSITIONS = ["priere", "mains_a_gauche","mains_a_droite", "mains_fesses", "mains_fesses", "main_en_air","main_ecartees"]
+TARGET_POSE_TIME = 1.5  # Temps cible pour maintenir une posex
 MAX_POSE_TIME_BONUS = 0.8  # Temps maximum pour obtenir un bonus de vitesse
 
 
-song = AudioSegment.from_mp3("C:/dev/IAYolo/jeu/music/waka.mp3")
-play(song)
 
 # Fonction pour vérifier si la pose correspond à une pose cible (Dab)
 def is_good_position(landmarks, position):
@@ -32,21 +28,21 @@ def is_good_position(landmarks, position):
         if distance > 0.3:  # Seuil à ajuster selon les besoins
             correct = False
 
-    if position == "mains_a_droite":
+    elif position == "mains_a_droite":
         nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
         left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
         right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
         if left_wrist_x > nose_x or right_wrist_x > nose_x:
             correct = False
 
-    if position == "mains_tete":
+    elif position == "mains_tete":
         nose_y = landmarks[mp_pose.PoseLandmark.NOSE.value].y
         left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
         right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
         if left_wrist_y > nose_y or right_wrist_y > nose_y:
             correct = False
 
-    if position == "mains_fesses":
+    elif position == "mains_fesses":
         left_hip_y = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y
         right_hip_y = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y
         left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
@@ -54,13 +50,29 @@ def is_good_position(landmarks, position):
         if left_wrist_y == left_hip_y or right_wrist_y == right_hip_y:
             correct = False
 
-    if position == "main_en_air":
+    elif position == "mains_a_droite":
+        nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
+        left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
+        right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
+        if left_wrist_x < nose_x or right_wrist_x < nose_x:
+            correct = False
+
+    elif position == "main_en_air":
         left_shoulder_y = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y
         right_shoulder_y = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y
         left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
         right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
         if left_wrist_y > left_shoulder_y or right_wrist_y > right_shoulder_y:
             correct = False
+
+    elif position == "mains_ecartees":
+        # Vérifier si les bras sont écartés
+        left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+        right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+        left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+        shoulder_width = np.abs(left_shoulder.x - right_shoulder.x)
+        wrist_distance = np.abs(left_wrist.x - right_wrist.x)
 
     return correct
 
