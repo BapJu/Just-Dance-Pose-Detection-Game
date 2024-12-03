@@ -19,8 +19,8 @@ class DancePoseGame:
         )
 
         # Game Configuration
-        self.POSITIONS = ["priere", "mains_a_gauche", "mains_a_droite",
-                          "mains_fesses", "main_en_air", "mains_ecartees"]
+        self.POSITIONS = ["prayer", "hands_left", "hands_right",
+                          "hands_hips", "hands_up", "hands_separated"]
         self.TARGET_POSE_TIME = 1.5
 
         # Game State
@@ -30,20 +30,41 @@ class DancePoseGame:
     def is_good_position(self, landmarks, position):
         """Validate pose correctness based on position"""
         try:
-            if position == "priere":
+            if position == "prayer":
                 left_wrist = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value]
                 right_wrist = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
                 distance = np.sqrt((left_wrist.x - right_wrist.x) ** 2 +
                                    (left_wrist.y - right_wrist.y) ** 2)
                 return distance <= 0.3
 
-            elif position == "mains_a_droite":
+            elif position == "hands_right":
                 nose_x = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value].x
                 left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
                 right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
                 return left_wrist_x <= nose_x and right_wrist_x <= nose_x
 
-            # Add other position checks similarly
+            elif position == "hands_left":
+                nose_x = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value].x
+                left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
+                right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
+                return left_wrist_x >= nose_x and right_wrist_x >= nose_x
+
+            elif position == "hands_hips":
+                left_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y
+                right_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].y
+                left_hip_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y
+                right_hip_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value].y
+                return left_wrist_y >= left_hip_y and right_wrist_y >= right_hip_y
+
+            elif position == "hands_up":
+                left_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y
+                right_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].y
+                return left_wrist_y <= 0.3 and right_wrist_y <= 0.3
+
+            elif position == "hands_separated":
+                left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
+                right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
+                return abs(left_wrist_x - right_wrist_x) >= 0.3
 
             return False
         except Exception as e:
