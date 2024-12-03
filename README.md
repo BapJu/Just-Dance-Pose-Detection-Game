@@ -76,9 +76,6 @@ You can easily extend the game by:
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📄 License
-
-[Specify your license, e.g., MIT License]
 
 ## 👥 Acknowledgements
 
