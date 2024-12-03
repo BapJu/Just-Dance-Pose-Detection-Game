@@ -3,189 +3,186 @@ import cv2
 from ultralytics import YOLO
 import mediapipe as mp
 import numpy as np
-
-# Charger le modèle YOLOv8 pour la détection des personnes
-model = YOLO('yolov8n.pt')  # Charger le modèle YOLOv8n pré-entrainé
-
-# Initialisation de MediaPipe pour la détection des poses
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
-POSITIONS = ["priere", "mains_a_gauche","mains_a_droite", "mains_fesses", "mains_fesses", "main_en_air","main_ecartees"]
-TARGET_POSE_TIME = 1.5  # Temps cible pour maintenir une posex
-MAX_POSE_TIME_BONUS = 0.8  # Temps maximum pour obtenir un bonus de vitesse
+from random import choice
 
 
+class DancePoseGame:
+    def __init__(self):
+        # Model Initialization
+        self.model = YOLO('yolov8n.pt')
 
-# Fonction pour vérifier si la pose correspond à une pose cible (Dab)
-def is_good_position(landmarks, position):
-    correct = True
-    if position == "priere":
-        # Mains jointes: vérifier si la distance entre les poignets est inférieure à un seuil
-        left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
-        right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
-        distance = np.sqrt((left_wrist.x - right_wrist.x) ** 2 + (left_wrist.y - right_wrist.y) ** 2)
-        if distance > 0.3:  # Seuil à ajuster selon les besoins
-            correct = False
+        # MediaPipe Pose Detection Setup
+        mp_pose = mp.solutions.pose
+        self.pose_detector = mp_pose.Pose(
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
 
-    elif position == "mains_a_droite":
-        nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
-        left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
-        right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
-        if left_wrist_x > nose_x or right_wrist_x > nose_x:
-            correct = False
+        # Game Configuration
+        self.POSITIONS = ["prayer", "hands_left", "hands_right",
+                          "hands_hips", "hands_up", "hands_separated"]
+        self.TARGET_POSE_TIME = 1.5
 
-    elif position == "mains_tete":
-        nose_y = landmarks[mp_pose.PoseLandmark.NOSE.value].y
-        left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
-        right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
-        if left_wrist_y > nose_y or right_wrist_y > nose_y:
-            correct = False
+        # Game State
+        self.score_tracker = ScoreTracker()
+        self.current_pose_index = 0
 
-    elif position == "mains_fesses":
-        left_hip_y = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y
-        right_hip_y = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y
-        left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
-        right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
-        if left_wrist_y == left_hip_y or right_wrist_y == right_hip_y:
-            correct = False
+    def is_good_position(self, landmarks, position):
+        """Validate pose correctness based on position"""
+        try:
+            if position == "prayer":
+                left_wrist = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value]
+                right_wrist = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
+                distance = np.sqrt((left_wrist.x - right_wrist.x) ** 2 +
+                                   (left_wrist.y - right_wrist.y) ** 2)
+                return distance <= 0.3
 
-    elif position == "mains_a_droite":
-        nose_x = landmarks[mp_pose.PoseLandmark.NOSE.value].x
-        left_wrist_x = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x
-        right_wrist_x = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x
-        if left_wrist_x < nose_x or right_wrist_x < nose_x:
-            correct = False
+            elif position == "hands_right":
+                nose_x = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value].x
+                left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
+                right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
+                return left_wrist_x <= nose_x and right_wrist_x <= nose_x
 
-    elif position == "main_en_air":
-        left_shoulder_y = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y
-        right_shoulder_y = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y
-        left_wrist_y = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y
-        right_wrist_y = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y
-        if left_wrist_y > left_shoulder_y or right_wrist_y > right_shoulder_y:
-            correct = False
+            elif position == "hands_left":
+                nose_x = landmarks[mp.solutions.pose.PoseLandmark.NOSE.value].x
+                left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
+                right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
+                return left_wrist_x >= nose_x and right_wrist_x >= nose_x
 
-    elif position == "mains_ecartees":
-        # Vérifier si les bras sont écartés
-        left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
-        right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
-        left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
-        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
-        shoulder_width = np.abs(left_shoulder.x - right_shoulder.x)
-        wrist_distance = np.abs(left_wrist.x - right_wrist.x)
+            elif position == "hands_hips":
+                left_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y
+                right_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].y
+                left_hip_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value].y
+                right_hip_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value].y
+                return left_wrist_y >= left_hip_y and right_wrist_y >= right_hip_y
 
-    return correct
+            elif position == "hands_up":
+                left_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].y
+                right_wrist_y = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].y
+                return left_wrist_y <= 0.3 and right_wrist_y <= 0.3
 
-# Fonction pour superposer l'image de la pose avec transparence
-def overlay_pose_with_transparency(frame, pose_image):
-    # Assurez-vous que l'image de la pose a 4 canaux (R, G, B, A)
-    if pose_image.shape[2] == 4:
-        # Séparer les canaux : RGB et alpha
-        img_rgb = pose_image[:, :, :3]
-        img_alpha = pose_image[:, :, 3] / 255.0  # Normaliser l'alpha (0 à 1)
+            elif position == "hands_separated":
+                left_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value].x
+                right_wrist_x = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value].x
+                return abs(left_wrist_x - right_wrist_x) >= 0.3
 
-        # Définir la position où l'image de la pose sera affichée (coin inférieur droit)
-        height, width, _ = frame.shape
-        pose_height, pose_width, _ = img_rgb.shape
-        x_offset = width - pose_width - 10
-        y_offset = height - pose_height - 10
+            return False
+        except Exception as e:
+            print(f"Error in pose validation: {e}")
+            return False
 
-        # Superposer l'image de la pose avec transparence sur le frame
-        for c in range(0, 3):  # Pour chaque canal (R, G, B)
-            frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] = \
-                (1. - img_alpha) * frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] + \
-                img_alpha * img_rgb[:, :, c]
-    else:
-        # Si l'image de la pose n'a pas d'alpha (pas de transparence), on l'ajoute simplement au frame
-        height, width, _ = frame.shape
-        pose_height, pose_width, _ = pose_image.shape
-        x_offset = width - pose_width - 10
-        y_offset = height - pose_height - 10
-        frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width] = pose_image
+    def overlay_pose_image(self, frame, pose_image):
+        """Overlay pose image with transparency"""
+        if pose_image.shape[2] == 4:
+            img_rgb = pose_image[:, :, :3]
+            img_alpha = pose_image[:, :, 3] / 255.0
 
-    return frame
+            height, width, _ = frame.shape
+            pose_height, pose_width, _ = img_rgb.shape
+            x_offset = width - pose_width - 10
+            y_offset = height - pose_height - 10
 
-# Initialisation de la capture vidéo
-cap = cv2.VideoCapture(0)
+            for c in range(3):
+                frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] = \
+                    (1. - img_alpha) * frame[y_offset:y_offset + pose_height, x_offset:x_offset + pose_width, c] + \
+                    img_alpha * img_rgb[:, :, c]
+        return frame
 
-indice_pose = 0
-delay = 3
-last_change_time = time.time()
+    def run(self):
+        cap = cv2.VideoCapture(0)
 
-while cap.isOpened():
-    if indice_pose > len(POSITIONS) - 1:
-        indice_pose = 0
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-    ret, frame = cap.read()
-    if not ret:
-        break
+            # Person detection
+            results = self.model(frame)
+            detections = results[0].boxes
 
-    # Utilisation de YOLOv8 pour détecter les personnes
-    results = model(frame)  # Appliquer le modèle YOLOv8 sur l'image
+            # Load target pose image
+            pose_image = cv2.imread(f"poses/{self.POSITIONS[self.current_pose_index]}.png", cv2.IMREAD_UNCHANGED)
+            frame = self.overlay_pose_image(frame, pose_image)
 
-    # Résultats de détection YOLOv8 sous forme de liste d'objets Box
-    detections = results[0].boxes  # Récupérer les boîtes englobantes des objets détectés
+            for box in detections:
+                if box.cls == 0:  # Person class
+                    xyxy = box.xyxy[0].cpu().numpy()
+                    x1, y1, x2, y2 = map(int, xyxy)
 
-    # Filtrer les détections pour ne garder que les personnes
-    for box in detections:
-        if box.cls == 0:  # Classe 0 correspond à "person" dans YOLOv8
-            xyxy = box.xyxy[0].cpu().numpy()  # Convertir en numpy array
-            x1, y1, x2, y2 = map(int, xyxy)  # Convertir en entiers
+                    person_roi = frame[y1:y2, x1:x2]
+                    person_rgb = cv2.cvtColor(person_roi, cv2.COLOR_BGR2RGB)
 
-            person_roi = frame[y1:y2, x1:x2]
+                    # Pose detection
+                    results_pose = self.pose_detector.process(person_rgb)
 
-            # Conversion de l'image en RGB pour MediaPipe
-            person_rgb = cv2.cvtColor(person_roi, cv2.COLOR_BGR2RGB)
+                    # Display current pose and score
+                    cv2.putText(frame, self.POSITIONS[self.current_pose_index],
+                                (400, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    cv2.putText(frame, f"Score: {self.score_tracker.get_score()}",
+                                (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
-            # Détection de pose avec MediaPipe
-            results_pose = pose.process(person_rgb)
+                    if results_pose.pose_landmarks:
+                        landmarks = results_pose.pose_landmarks.landmark
+                        is_correct = self.is_good_position(landmarks, self.POSITIONS[self.current_pose_index])
 
-            cv2.putText(frame, POSITIONS[indice_pose], (400, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
-                        cv2.LINE_AA)
+                        # Update score and change pose
+                        if self.score_tracker.update_score(self.POSITIONS[self.current_pose_index], is_correct):
+                            self.current_pose_index = self.POSITIONS.index(choice(self.POSITIONS))
 
-            # Si des points clés sont détectés
-            if results_pose.pose_landmarks:
-                landmarks = results_pose.pose_landmarks.landmark
+                        status_color = (0, 255, 0) if is_correct else (0, 0, 255)
+                        status_text = "Pose correcte!" if is_correct else "Essaye encore!"
+                        cv2.putText(frame, status_text, (50, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
 
-                # Vérifier si la pose correspond
-                if is_good_position(landmarks, POSITIONS[indice_pose]):
-                    current_time = time.time()
-                    cv2.putText(frame, "Pose correcte!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2,
-                                cv2.LINE_AA)
-                    if current_time - last_change_time >= delay:
-                        last_change_time = current_time  # Met à jour l'heure de changement
-                        indice_pose += 1  # Incrémente l'indice
+                        # Draw pose landmarks
+                        mp.solutions.drawing_utils.draw_landmarks(
+                            person_roi,
+                            results_pose.pose_landmarks,
+                            mp.solutions.pose.POSE_CONNECTIONS
+                        )
 
-                else:
-                    cv2.putText(frame, "Essaye encore!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2,
-                                cv2.LINE_AA)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3)
 
-                # Dessiner les points clés de la pose
-                mp.solutions.drawing_utils.draw_landmarks(person_roi, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            cv2.imshow("Just Dance", frame)
 
-                # Affichage des landmarks de la pose détectée (superposition)
-                for idx, landmark in enumerate(results_pose.pose_landmarks.landmark):
-                    x = int(landmark.x * person_roi.shape[1])
-                    y = int(landmark.y * person_roi.shape[0])
-                    cv2.circle(frame, (x + x1, y + y1), 5, (0, 255, 0), -1)  # Afficher les landmarks en vert
+            if cv2.waitKey(10) & 0xFF == ord('q'):
+                break
 
-            # Encadrer la personne détectée
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3)
+        cap.release()
+        cv2.destroyAllWindows()
 
-    # Charger l'image de la pose cible (image PNG)
-    pose_image = cv2.imread(f"poses/{POSITIONS[indice_pose]}.png", cv2.IMREAD_UNCHANGED)
 
-    # Afficher l'image de la pose à réaliser avec transparence
-    if pose_image is not None:
-        frame = overlay_pose_with_transparency(frame, pose_image)
+class ScoreTracker:
+    def __init__(self):
+        self.score = 0
+        self.last_valid_pose = None
+        self.pose_start_time = None
 
-    # Afficher l'image avec les résultats
-    cv2.imshow("Just Dance", frame)
+    def update_score(self, position, is_correct):
+        current_time = time.time()
 
-    # Sortir avec 'q'
-    if cv2.waitKey(10) & 0xFF == ord('q'):
-        break
+        if is_correct and (self.last_valid_pose != position):
+            if self.pose_start_time is None:
+                self.pose_start_time = current_time
 
-# Libérer les ressources
-cap.release()
-cv2.destroyAllWindows()
+            if current_time - self.pose_start_time >= 1.5:
+                self.score += 100
+                self.last_valid_pose = position
+                self.pose_start_time = None
+                return True
+        else:
+            self.pose_start_time = None
+
+        return False
+
+    def get_score(self):
+        return int(self.score)
+
+
+def main():
+    game = DancePoseGame()
+    game.run()
+
+
+if __name__ == "__main__":
+    main()
