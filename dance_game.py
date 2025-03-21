@@ -28,7 +28,7 @@ class DancePoseGame:
         }
 
         self.CHOICE_DURATION = 1.5
-        self.TARGET_POSE_TIME = 3
+        self.TARGET_POSE_TIME = 5
 
         # Game State
         self.score_tracker = ScoreTracker()
@@ -111,7 +111,7 @@ class DancePoseGame:
         """Stop the music"""
         pygame.mixer.music.stop()
 
-    def overlay_sunglasses(self, frame, landmarks, offset_x=20, offset_y=50):
+    def overlay_sunglasses(self, frame, landmarks, offset_x=0, offset_y=50):
         """
         Place sunglasses precisely on detected eyes with customizable positioning.
 
@@ -137,7 +137,7 @@ class DancePoseGame:
             eye_width = int(np.sqrt(
                 (left_eye.x - right_eye.x) ** 2 +
                 (left_eye.y - right_eye.y) ** 2
-            ) * frame.shape[1] * 2.2)  # Increased multiplier for better coverage
+            ) * frame.shape[1] * 2.5)  # Increased multiplier for better coverage
 
             # Resize sunglasses to fit eye width while maintaining aspect ratio
             if self.sunglasses is not None:
@@ -206,7 +206,7 @@ class DancePoseGame:
                 right_wrist_y = landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].y
                 left_hip_y = landmarks[self.mp_pose.PoseLandmark.LEFT_HIP.value].y
                 right_hip_y = landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP.value].y
-                return left_wrist_y >= left_hip_y and right_wrist_y >= right_hip_y
+                return left_wrist_y >= left_hip_y - 0.3 and right_wrist_y >= right_hip_y - 0.3
 
             elif position == "hands_up":
                 left_wrist_y = landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].y
@@ -294,7 +294,9 @@ class DancePoseGame:
 
                         # Update score and change pose
                         if self.score_tracker.update_score(self.POSITIONS[self.current_pose_index], is_correct):
-                            self.current_pose_index = self.POSITIONS.index(choice(self.POSITIONS))
+                            available_positions = [pos for pos in self.POSITIONS if
+                                                   pos != self.POSITIONS[self.current_pose_index]]
+                            self.current_pose_index = self.POSITIONS.index(choice(available_positions))
 
                         status_color = (0, 255, 0) if is_correct else (0, 0, 255)
                         status_text = "Pose correcte!" if is_correct else "Essaye encore!"
